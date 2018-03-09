@@ -1,0 +1,14 @@
+allprojects {
+    buildscript {
+        ext.java_version = '1.8'
+        ext.kotlin_version = '1.2.30'
+
+        repositories {
+            mavenCentral()
+        }
+
+        dependencies {
+            classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        }
+    }
+}
