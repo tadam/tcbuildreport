@@ -1,3 +1,10 @@
 rootProject.name = 'tcbuildreport'
 
 include 'backend'
+
+include 'teamcity-rest-client'
+
+include 'teamcity-rest-client-api'
+project(':teamcity-rest-client-api').projectDir = new File("teamcity-rest-client/teamcity-rest-client-api")
+include 'teamcity-rest-client-impl'
+project(':teamcity-rest-client-impl').projectDir = new File("teamcity-rest-client/teamcity-rest-client-impl")
