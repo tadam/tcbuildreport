@@ -3,5 +3,5 @@
 	url = https://github.com/tadam/teamcity-rest-client
 	branch = running-builds-selector
 [submodule "infra/ecs/terraform-ecs"]
-	path = infra/ecs/terraform-ecs
+	path = infra/aws/terraform-ecs
 	url = https://github.com/arminc/terraform-ecs.git
