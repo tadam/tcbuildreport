@@ -8,7 +8,7 @@ import io.ktor.routing.*
 
 data class Pong(val data: String)
 
-fun Application.api() {
+fun Application.main() {
     install(DefaultHeaders)
     install(Compression)
     install(ContentNegotiation) {

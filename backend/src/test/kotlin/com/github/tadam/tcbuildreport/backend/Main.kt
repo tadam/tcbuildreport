@@ -11,13 +11,11 @@ import kotlin.test.*
 
 class ApiTest {
     @Test
-    fun pingRequest() = withTestApplication(Application::api) {
+    fun pingRequest() = withTestApplication(Application::main) {
         with(handleRequest(HttpMethod.Get, "/api/ping") {
             addHeader(HttpHeaders.Accept, "application/json") })
         {
-            println("CONTENT: " + response.content)
             assertEquals(HttpStatusCode.OK, response.status())
-            //assertEquals("Test String", response.content)
         }
     }
 }
