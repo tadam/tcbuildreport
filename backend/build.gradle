@@ -1,8 +1,8 @@
 apply plugin: 'java'
 apply plugin: 'kotlin'
-apply plugin: 'application'
 
-mainClassName = 'com.github.tadam.tcbuildreport.backend.MainKt'
+apply plugin: 'application'
+mainClassName = 'com.github.tadam.tcbuildreport.backend.ServerKt'
 
 ext.ktor_version = '0.9.1'
 
@@ -29,5 +29,10 @@ repositories {
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     compile "io.ktor:ktor-server-netty:$ktor_version"
+    compile "io.ktor:ktor-gson:$ktor_version"
     compile project(':teamcity-rest-client')
+
+    testCompile 'junit:junit:4.12'
+    testCompile "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
+    testCompile "io.ktor:ktor-server-test-host:$ktor_version"
 }
