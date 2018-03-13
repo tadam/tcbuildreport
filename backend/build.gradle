@@ -5,6 +5,9 @@ apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'application'
 mainClassName = 'com.github.tadam.tcbuildreport.backend.ServerKt'
 
+apply plugin: 'com.bmuschko.docker-remote-api'
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+
 ext.ktor_version = '0.9.1'
 
 sourceCompatibility = 1.8
@@ -39,7 +42,15 @@ dependencies {
 }
 
 shadowJar {
-    baseName = 'tcbuildreport-backend'
+    baseName = 'backend-fat'
     classifier = null
     version = null
 }
+
+task buildImage(type: DockerBuildImage) {
+    dependsOn shadowJar
+    inputDir = file('.')
+    tag = 'tudum/' + rootProject.name + '-' + project.name + ':' + rootProject.version
+}
+
+build.dependsOn buildImage
