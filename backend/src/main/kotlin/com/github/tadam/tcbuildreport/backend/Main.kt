@@ -16,6 +16,7 @@ import io.ktor.request.receive
 import io.ktor.response.respond
 import io.ktor.routing.route
 import io.ktor.routing.routing
+import java.text.DateFormat
 
 fun Application.main() {
     install(DefaultHeaders)
@@ -29,6 +30,7 @@ fun Application.main() {
     install(ContentNegotiation) {
         gson {
             setPrettyPrinting()
+            setDateFormat(DateFormat.LONG)
         }
     }
     install(StatusPages) {
@@ -52,7 +54,7 @@ fun Application.main() {
             post<BuildsParams> { params ->
                 val servers = call.receive<Servers>()
                 validateRequestServers(servers)
-                call.respond(fetchRunningBuilds(servers.servers, params))
+                call.respond(fetchBuilds(servers.servers, params))
             }
         }
     }

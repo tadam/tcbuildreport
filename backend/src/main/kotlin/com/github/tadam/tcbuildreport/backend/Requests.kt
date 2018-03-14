@@ -35,12 +35,14 @@ fun validateRequestServers(s: Servers) {
 
     s.servers ?: throw IllegalArgumentException("List of servers cannot be null")
     for (server in s.servers) {
+        server ?: throw IllegalArgumentException("Server cannot be null")
         server.url ?: throw IllegalArgumentException("Server url cannot be null")
+        val trimmedUrl = server.url.trimEnd('/')
 
-        if (urlsSet.contains(server.url)) {
-            throw IllegalArgumentException("Server urls should be unique")
+        if (urlsSet.contains(trimmedUrl)) {
+            throw IllegalArgumentException("Server url [${server.url}] is not unique")
         }
-        urlsSet.add(server.url)
+        urlsSet.add(trimmedUrl)
 
         val credentials = server.credentials
         if (credentials != null) {

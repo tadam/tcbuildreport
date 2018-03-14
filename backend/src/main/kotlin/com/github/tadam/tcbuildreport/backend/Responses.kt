@@ -1,5 +1,8 @@
 package com.github.tadam.tcbuildreport.backend
 
+import java.util.Date
+
+
 data class PingResponse(val data: String)
 
 data class ErrorResponse(val code: Int, val message: String = "")
@@ -11,5 +14,5 @@ data class Build(
         val id: String,
         val buildTypeId: String,
         val buildNumber: String,
-        val startDate: String,
+        val startDate: Date,
         val webUrl: String)
