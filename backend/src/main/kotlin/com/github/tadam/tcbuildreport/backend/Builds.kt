@@ -5,8 +5,10 @@ import kotlinx.coroutines.experimental.channels.*
 import org.jetbrains.teamcity.rest.BuildId
 import org.jetbrains.teamcity.rest.TeamCityInstance
 import org.jetbrains.teamcity.rest.TeamCityInstanceFactory
+import java.io.IOException
 
 data class BuildsAndErrors(val builds: List<Build>, val errors: List<String>? = null)
+data class BuildOrError(val build: Build? = null, val error: String? = null)
 
 fun fetchBuilds(servers: List<Server>, params: BuildsParams): BuildsResponse = runBlocking {
     val builds = mutableListOf<Build>()
@@ -40,29 +42,28 @@ private suspend fun fetchBuildsFromServer(server: Server): BuildsAndErrors {
              service.builds().withAnyStatus().runningOnly().list()
          }
     } catch (ex: CancellationException) {
-        errors.add("Retrieving list of running builds for server [${server.url}] is timed out")
+        errors.add("Couldn't retrieve list of builds from [${server.url}]: timed out")
+        return BuildsAndErrors(resBuilds, errors)
+    } catch (ex: IOException) {
+        errors.add("Couldn't retrieve list of builds from [${server.url}]: [${ex.message}]")
         return BuildsAndErrors(resBuilds, errors)
     }
 
 
-    val channel = ArrayChannel<Deferred<Pair<Build?, String>>>(10)
+    val channel = ArrayChannel<Deferred<BuildOrError>>(10)
 
     launch {
         while (!channel.isClosedForReceive) {
-            val (buildOrNull, id) = channel.receive().await()
-            if (buildOrNull != null) {
-                resBuilds.add(buildOrNull)
-            } else {
-                errors.add("Retrieving build with id $id on server [${server.url}] is timed out")
-            }
+            val (build, error) = channel.receive().await()
+            if (build != null) resBuilds.add(build)
+            if (error != null) errors.add(error)
         }
     }
 
     builds.forEach { partialBuild ->
         channel.sendBlocking(
                 async {
-                    val buildOrNull = fetchFullBuild(service, server.url, partialBuild.id)
-                    Pair(buildOrNull, partialBuild.id.stringId)
+                    fetchFullBuild(service, server.url, partialBuild.id)
                 }
         )
     }
@@ -72,7 +73,7 @@ private suspend fun fetchBuildsFromServer(server: Server): BuildsAndErrors {
     return BuildsAndErrors(resBuilds, errors)
 }
 
-private suspend fun fetchFullBuild(service: TeamCityInstance, serverUrl: String, id: BuildId): Build? {
+private suspend fun fetchFullBuild(service: TeamCityInstance, serverUrl: String, id: BuildId): BuildOrError {
     try {
         return withTimeout(2000L) {
             // service.build() gets full build info asynchronously and subsequent call fetchStartDate()
@@ -80,14 +81,18 @@ private suspend fun fetchFullBuild(service: TeamCityInstance, serverUrl: String,
             // if partialBuild.fetchStartDate() is called, then it's going to be blocking
             val fullBuild = service.build(id)
 
-            Build(server = serverUrl,
+            val build = Build(server = serverUrl,
                     id = fullBuild.id.stringId,
                     buildTypeId = fullBuild.buildTypeId.stringId,
                     buildNumber = fullBuild.buildNumber,
                     startDate = fullBuild.fetchStartDate(),
                     webUrl = fullBuild.getWebUrl())
+
+            BuildOrError(build)
         }
     } catch (ex: CancellationException) {
-        return null
+        return BuildOrError(error = "Couldn't retrieve build with id ${id.stringId} from [$serverUrl]: timed out")
+    } catch (ex: IOException) {
+        return BuildOrError(error = "Couldn't retrieve build with id ${id.stringId} from [$serverUrl]: [${ex.message}]")
     }
 }
