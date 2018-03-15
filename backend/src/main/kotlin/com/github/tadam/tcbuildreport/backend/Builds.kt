@@ -10,12 +10,15 @@ import java.io.IOException
 data class BuildsAndErrors(val builds: List<Build>, val errors: List<String>? = null)
 data class BuildOrError(val build: Build? = null, val error: String? = null)
 
+val ctx = newFixedThreadPoolContext(2, "tcRestPool")
+//val ctx = Unconfined
+
 fun fetchBuilds(servers: List<Server>, params: BuildsParams): BuildsResponse = runBlocking {
     val builds = mutableListOf<Build>()
     val errors = mutableListOf<String>()
 
     val serverResultsDeferred = servers.map {
-        async {
+        async(ctx) {
             fetchBuildsFromServer(it)
         }
     }
@@ -61,9 +64,9 @@ private suspend fun fetchBuildsFromServer(server: Server): BuildsAndErrors {
     val errors = mutableListOf<String>()
 
     val builds = try {
-         withTimeout(10000L) {
-             service.builds().withAnyStatus().runningOnly().list()
-         }
+        withTimeout(10000L) {
+            service.builds().withAnyStatus().runningOnly().list()
+        }
     } catch (ex: CancellationException) {
         errors.add("Couldn't retrieve list of builds from [${server.url}]: timed out")
         return BuildsAndErrors(resBuilds, errors)
@@ -75,7 +78,7 @@ private suspend fun fetchBuildsFromServer(server: Server): BuildsAndErrors {
 
     val channel = ArrayChannel<Deferred<BuildOrError>>(10)
 
-    launch {
+    val buildReceiveJob = launch(ctx) {
         while (!channel.isClosedForReceive) {
             val (build, error) = channel.receive().await()
             if (build != null) resBuilds.add(build)
@@ -85,13 +88,14 @@ private suspend fun fetchBuildsFromServer(server: Server): BuildsAndErrors {
 
     builds.forEach { partialBuild ->
         channel.sendBlocking(
-                async {
+                async(ctx) {
                     fetchFullBuild(service, server.url, partialBuild.id)
                 }
         )
     }
 
     channel.close()
+    buildReceiveJob.join()
 
     return BuildsAndErrors(resBuilds, errors)
 }
