@@ -30,7 +30,7 @@ Optional query parameters:
 - `sortBy: server | startDate` (default `server`)
 - `sortOrder: asc | desc` (default `asc`)
 - `offset` (default `0`)
-- `limit` (default 10)
+- `limit` (default `10`)
 
 Send list of servers as JSON in POST data:
 ```json
@@ -55,16 +55,16 @@ Response:
 {
   "builds": [
     {
-      "server": <teamcity_server_url>
+      "server": <teamcity_server_url>,
       "id": <build_id>,
-      "buildTypeId": <build_type_id>
-      "buildNumber": <build_number>
-      "startDate": <start_date>
+      "buildTypeId": <build_type_id>,
+      "buildNumber": <build_number>,
+      "startDate": <start_date>,
       "webUrl": <teamcity_web_url_for_this_build>
     },
     ...
   ],
-  "total": <total_number_of_running_builds_on_all_servers>
+  "total": <total_number_of_running_builds_on_all_servers>,
   "errors": [
     "error1",
     "error2",
