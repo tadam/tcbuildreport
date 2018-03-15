@@ -26,7 +26,30 @@ fun fetchBuilds(servers: List<Server>, params: BuildsParams): BuildsResponse = r
         if (res.errors != null) errors.addAll(res.errors)
     }
 
-    BuildsResponse(builds, builds.size, errors)
+
+    val cmpProperty = compareBy<Build>({
+        when(params.sortBy) {
+            SortBy.server -> it.server
+            SortBy.startDate -> it.startDate
+        }
+    })
+
+    val cmpPropertyOrder = when(params.sortOrder) {
+        SortOrder.asc -> cmpProperty
+        SortOrder.desc -> cmpProperty.reversed()
+    }
+
+    builds.sortWith(cmpPropertyOrder)
+
+
+    var buildsLimited = mutableListOf<Build>()
+    if (params.offset < builds.size) {
+        val requestedToIndex = params.offset + params.limit
+        val toIndex = if (requestedToIndex < builds.size) requestedToIndex else builds.size
+        buildsLimited = builds.subList(params.offset, toIndex)
+    }
+
+    BuildsResponse(buildsLimited, builds.size, errors)
 }
 
 private suspend fun fetchBuildsFromServer(server: Server): BuildsAndErrors {
