@@ -17,8 +17,17 @@ import io.ktor.response.respond
 import io.ktor.routing.route
 import io.ktor.routing.routing
 import java.text.DateFormat
+import io.ktor.config.ApplicationConfig
+import kotlinx.coroutines.experimental.*
+
+
+object BuildsFetcherHolder {
+    var fetcher: BuildsFetcher? = null
+}
 
 fun Application.main() {
+    setBuildsFetcher(environment.config)
+
     install(DefaultHeaders)
     install(Compression)
     install(Locations)
@@ -52,15 +61,38 @@ fun Application.main() {
             }
 
             post<BuildsParams> { params ->
+
                 val servers = call.receive<Servers>()
                 validateRequestServers(servers)
-                call.respond(fetchBuilds(servers.servers, params))
+                call.respond(BuildsFetcherHolder.fetcher!!.fetchBuilds(servers.servers, params))
             }
         }
     }
 }
 
-suspend fun respondBadRequest(call: ApplicationCall, message: String? = null) {
+private suspend fun respondBadRequest(call: ApplicationCall, message: String? = null) {
     call.respond(HttpStatusCode.BadRequest,
             ErrorResponse(HttpStatusCode.BadRequest.value,message ?: HttpStatusCode.BadRequest.description))
+}
+
+private fun setBuildsFetcher(config: ApplicationConfig) {
+    if (BuildsFetcherHolder.fetcher == null) {
+        val restConfig = config.config("service.rest")
+
+        val paramsNames = listOf("threadsNum", "fetchBuildsListTimeoutMs", "fetchBuildTimeoutMs", "maxServerConnections")
+        val params = paramsNames.associate {
+            val value = restConfig.property(it).getString().toInt()
+            if (value <= 0) {
+                throw RuntimeException("Wrong config value [$value] for parameter service.rest.$it")
+            }
+            Pair(it, value)
+        }
+        println("PARAMS: " + params.toString())
+
+        BuildsFetcherHolder.fetcher = BuildsFetcher(
+                ctx = newFixedThreadPoolContext(params.getValue("threadsNum"), BuildsFetcher.defaultContextName),
+                fetchBuildsListTimeoutMs = params.getValue("fetchBuildsListTimeoutMs").toLong(),
+                fetchBuildTimeoutMs = params.getValue("fetchBuildTimeoutMs").toLong(),
+                maxServerConnections = params.getValue("maxServerConnections"))
+    }
 }
