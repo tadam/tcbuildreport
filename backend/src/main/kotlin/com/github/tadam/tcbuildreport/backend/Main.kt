@@ -87,7 +87,6 @@ private fun setBuildsFetcher(config: ApplicationConfig) {
             }
             Pair(it, value)
         }
-        println("PARAMS: " + params.toString())
 
         BuildsFetcherHolder.fetcher = BuildsFetcher(
                 ctx = newFixedThreadPoolContext(params.getValue("threadsNum"), BuildsFetcher.defaultContextName),
