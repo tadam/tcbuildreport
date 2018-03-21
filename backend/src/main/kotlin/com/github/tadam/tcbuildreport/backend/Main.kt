@@ -89,23 +89,28 @@ private suspend fun respondBadRequest(call: ApplicationCall, message: String? = 
 private fun setBuildsFetcher(config: ApplicationConfig) {
     if (BuildsFetcherHolder.fetcher != null) return
 
-    val restConfig = config.config("service.rest")
+    try {
+        val restConfig = config.config("service.rest")
 
-    val paramsNames = listOf("threadsNum", "fetchBuildsListTimeoutMs", "fetchBuildTimeoutMs", "maxServerConnections")
-    val params = paramsNames.associate {
-        val value = restConfig.property(it).getString().toInt()
-        if (value <= 0) {
-            throw RuntimeException("Wrong config value [$value] for parameter service.rest.$it")
+        val paramsNames = listOf("threadsNum", "fetchBuildsListTimeoutMs", "fetchBuildTimeoutMs", "maxServerConnections")
+        val params = paramsNames.associate {
+            val value = restConfig.property(it).getString().toInt()
+            if (value <= 0) {
+                throw RuntimeException("Wrong config value [$value] for parameter service.rest.$it")
+            }
+            Pair(it, value)
         }
-        Pair(it, value)
-    }
 
-    BuildsFetcherHolder.fetcher = BuildsFetcher(
-            cache = CacheHolder.cache,
-            ctx = newFixedThreadPoolContext(params.getValue("threadsNum"), BuildsFetcher.defaultContextName),
-            fetchBuildsListTimeoutMs = params.getValue("fetchBuildsListTimeoutMs").toLong(),
-            fetchBuildTimeoutMs = params.getValue("fetchBuildTimeoutMs").toLong(),
-            maxServerConnections = params.getValue("maxServerConnections"))
+        BuildsFetcherHolder.fetcher = BuildsFetcher(
+                cache = CacheHolder.cache,
+                ctx = newFixedThreadPoolContext(params.getValue("threadsNum"), BuildsFetcher.defaultContextName),
+                fetchBuildsListTimeoutMs = params.getValue("fetchBuildsListTimeoutMs").toLong(),
+                fetchBuildTimeoutMs = params.getValue("fetchBuildTimeoutMs").toLong(),
+                maxServerConnections = params.getValue("maxServerConnections"))
+    } catch (ex: Exception) {
+        log.error(ex.message)
+        BuildsFetcherHolder.fetcher = BuildsFetcher()
+    }
 }
 
 private fun setCache(config: ApplicationConfig) {
