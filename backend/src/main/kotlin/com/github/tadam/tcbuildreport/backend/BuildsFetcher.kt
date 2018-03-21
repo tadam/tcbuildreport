@@ -8,20 +8,21 @@ import org.jetbrains.teamcity.rest.TeamCityInstanceFactory
 import java.io.IOException
 import kotlin.coroutines.experimental.CoroutineContext
 
-data class BuildsAndErrors(val builds: List<Build>, val errors: List<String>? = null)
-data class BuildOrError(val build: Build? = null, val error: String? = null)
+data class BuildsAndErrors(val builds: List<ABuild>, val errors: List<String>)
+data class BuildOrError(val build: ABuild? = null, val error: String? = null)
 
-class BuildsFetcher(val ctx: CoroutineContext = newFixedThreadPoolContext(2, defaultContextName),
+class BuildsFetcher(val cache: Cache? = null,
+                    val ctx: CoroutineContext = newFixedThreadPoolContext(1, defaultContextName),
                     val fetchBuildsListTimeoutMs: Long = 10000L,
                     val fetchBuildTimeoutMs: Long = 2000L,
                     val maxServerConnections: Int = 10)
 {
     companion object {
-        val defaultContextName = "tcRestPool"
+        const val defaultContextName = "tcRestPool"
     }
 
     fun fetchBuilds(servers: List<Server>, params: BuildsParams): BuildsResponse = runBlocking {
-        val builds = mutableListOf<Build>()
+        val builds = mutableListOf<ABuild>()
         val errors = mutableListOf<String>()
 
         val serverResultsDeferred = servers.map {
@@ -33,11 +34,11 @@ class BuildsFetcher(val ctx: CoroutineContext = newFixedThreadPoolContext(2, def
         for (deferred in serverResultsDeferred) {
             val res = deferred.await()
             builds.addAll(res.builds)
-            if (res.errors != null) errors.addAll(res.errors)
+            errors.addAll(res.errors)
         }
 
 
-        val cmpProperty = compareBy<Build>({
+        val cmpProperty = compareBy<ABuild>({
             when (params.sortBy) {
                 SortBy.server -> it.server
                 SortBy.startDate -> it.startDate
@@ -52,7 +53,7 @@ class BuildsFetcher(val ctx: CoroutineContext = newFixedThreadPoolContext(2, def
         builds.sortWith(cmpPropertyOrder)
 
 
-        var buildsLimited = mutableListOf<Build>()
+        var buildsLimited = mutableListOf<ABuild>()
         if (params.offset < builds.size) {
             val requestedToIndex = params.offset + params.limit
             val toIndex = if (requestedToIndex < builds.size) requestedToIndex else builds.size
@@ -67,36 +68,70 @@ class BuildsFetcher(val ctx: CoroutineContext = newFixedThreadPoolContext(2, def
             TeamCityInstanceFactory.guestAuth(server.url) else
             TeamCityInstanceFactory.httpAuth(server.url, server.credentials.login, server.credentials.password)
 
-        val resBuilds = mutableListOf<Build>()
+        val resBuilds = mutableListOf<ABuild>()
         val errors = mutableListOf<String>()
 
-        val builds = try {
-            withTimeout(fetchBuildsListTimeoutMs) {
-                service.builds().withAnyStatus().runningOnly().list()
+        var buildIds: ABuildIdList?
+        buildIds = cache?.getABuildIdList(server.url)
+
+        if (buildIds == null) {
+            buildIds = try {
+                withTimeout(fetchBuildsListTimeoutMs) {
+                    service.builds().withAnyStatus().runningOnly().list().map{ it.id.stringId }
+                }
+            } catch (ex: CancellationException) {
+                errors.add("Couldn't retrieve list of builds from [${server.url}]: timed out")
+                return BuildsAndErrors(resBuilds, errors)
+            } catch (ex: IOException) {
+                errors.add("Couldn't retrieve list of builds from [${server.url}]: [${ex.message}]")
+                return BuildsAndErrors(resBuilds, errors)
             }
-        } catch (ex: CancellationException) {
-            errors.add("Couldn't retrieve list of builds from [${server.url}]: timed out")
-            return BuildsAndErrors(resBuilds, errors)
-        } catch (ex: IOException) {
-            errors.add("Couldn't retrieve list of builds from [${server.url}]: [${ex.message}]")
-            return BuildsAndErrors(resBuilds, errors)
+
+            cache?.setABuildIdList(server.url, buildIds)
         }
 
+        var buildIdsToFetch = buildIds.toSet()
+        var buildIdsToDelFromCache = setOf<ABuildId>()
+        if (cache != null) {
+            val cachedBuildIds = cache.getABuildsKeySet(server.url)
+            if (cachedBuildIds != null) {
+                buildIdsToDelFromCache = cachedBuildIds.minus(buildIds)
 
+                val cachedBuilds = cache.getABuilds(server.url, buildIds)
+                buildIdsToFetch = buildIdsToFetch.minus(cachedBuilds.map { it.key })
+                resBuilds.addAll(cachedBuilds.values)
+            }
+        }
+
+        val buildsAndErrorsFetched = fetchFullBuildsBatch(service, server.url, buildIdsToFetch)
+        resBuilds.addAll(buildsAndErrorsFetched.builds)
+        errors.addAll(buildsAndErrorsFetched.errors)
+
+        cache?.setAndDeleteABuilds(server.url, buildsAndErrorsFetched.builds, buildIdsToDelFromCache)
+
+        return BuildsAndErrors(resBuilds, errors)
+    }
+
+    private suspend fun fetchFullBuildsBatch(
+            service: TeamCityInstance, serverUrl: ServerUrl, buildIds: Collection<ABuildId>): BuildsAndErrors
+    {
         val channel = ArrayChannel<Deferred<BuildOrError>>(maxServerConnections)
+
+        val buildsFetched = mutableListOf<ABuild>()
+        val errors = mutableListOf<String>()
 
         val buildReceiveJob = launch(ctx) {
             while (!channel.isClosedForReceive) {
                 val (build, error) = channel.receive().await()
-                if (build != null) resBuilds.add(build)
+                if (build != null) buildsFetched.add(build)
                 if (error != null) errors.add(error)
             }
         }
 
-        builds.forEach { partialBuild ->
+        buildIds.forEach { aBuildId ->
             channel.sendBlocking(
                     async(ctx) {
-                        fetchFullBuild(service, server.url, partialBuild.id)
+                        fetchFullBuild(service, serverUrl, BuildId(aBuildId))
                     }
             )
         }
@@ -104,10 +139,10 @@ class BuildsFetcher(val ctx: CoroutineContext = newFixedThreadPoolContext(2, def
         channel.close()
         buildReceiveJob.join()
 
-        return BuildsAndErrors(resBuilds, errors)
+        return BuildsAndErrors(buildsFetched, errors)
     }
 
-    private suspend fun fetchFullBuild(service: TeamCityInstance, serverUrl: String, id: BuildId): BuildOrError {
+    private suspend fun fetchFullBuild(service: TeamCityInstance, serverUrl: ServerUrl, id: BuildId): BuildOrError {
         try {
             return withTimeout(fetchBuildTimeoutMs) {
                 // service.build() gets full build info asynchronously and subsequent call fetchStartDate()
@@ -115,7 +150,7 @@ class BuildsFetcher(val ctx: CoroutineContext = newFixedThreadPoolContext(2, def
                 // if partialBuild.fetchStartDate() is called, then it's going to be blocking
                 val fullBuild = service.build(id)
 
-                val build = Build(server = serverUrl,
+                val build = ABuild(server = serverUrl,
                         id = fullBuild.id.stringId,
                         buildTypeId = fullBuild.buildTypeId.stringId,
                         buildNumber = fullBuild.buildNumber,

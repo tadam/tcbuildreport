@@ -18,10 +18,6 @@ enum class SortOrder {
     asc, desc
 }
 
-data class Servers(val servers: List<Server>)
-data class Server(val url: String, val credentials: Credentials? = null)
-data class Credentials(val login: String, val password: String)
-
 /* In addition to uniqueness check of server urls, here we also check
    that servers.servers is not null (!), etc.
    This is caused by strange behaviour of JSON converter from Ktor.

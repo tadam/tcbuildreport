@@ -37,6 +37,8 @@ dependencies {
     compile "io.ktor:ktor-gson:$ktor_version"
     compile "io.ktor:ktor-locations:$ktor_version"
     compile "ch.qos.logback:logback-classic:1.2.1"
+    compile 'org.redisson:redisson:3.6.3'
+    compile "com.fasterxml.jackson.module:jackson-module-kotlin:2.9.4.1"
     compile project(':teamcity-rest-client')
 
     testCompile 'junit:junit:4.12'
