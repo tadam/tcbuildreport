@@ -68,11 +68,10 @@ fun Application.main() {
     routing {
         route("/api") {
             get<Ping> {
-                call.respond(PingResponse("pong"))
+                call.respond(HttpStatusCode.OK, "pong")
             }
 
             post<BuildsParams> { params ->
-
                 val servers = call.receive<Servers>()
                 validateRequestServers(servers)
                 call.respond(BuildsFetcherHolder.fetcher!!.fetchBuilds(servers.servers, params))

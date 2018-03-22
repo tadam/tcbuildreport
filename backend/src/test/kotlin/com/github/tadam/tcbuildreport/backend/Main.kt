@@ -13,9 +13,7 @@ import kotlin.test.assertEquals
 class ApiTest {
     @Test
     fun pingRequest() = withTestApplication(Application::main) {
-        handleRequest(HttpMethod.Get, "/api/ping") {
-            addHeader(HttpHeaders.Accept, "application/json")
-        }.response.let {
+        handleRequest(HttpMethod.Get, "/api/ping").response.let {
             assertEquals(HttpStatusCode.OK, it.status())
         }
     }
