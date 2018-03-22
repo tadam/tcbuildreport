@@ -17,50 +17,54 @@ class Cache(private val client: RedissonClient,
         private val log = LoggerFactory.getLogger(::Cache.javaClass)
     }
 
-    fun getABuildIdList(serverUrl: ServerUrl): ABuildIdList? {
+    suspend fun getABuildIdList(serverUrl: ServerUrl): ABuildIdList? {
         return try {
-            client.getBucket<ABuildIdList>(encodeABuildIdListKey(serverUrl)).get()
+            client.getBucket<ABuildIdList>(encodeABuildIdListKey(serverUrl)).getAsync().awaitCoro()
         } catch (ex: Exception) {
             log.error(ex.message)
             null
         }
     }
 
-    fun setABuildIdList(serverUrl: ServerUrl, buildIds: ABuildIdList) {
+    suspend fun setABuildIdList(serverUrl: ServerUrl, buildIds: ABuildIdList) {
         try {
             val rBucket = client.getBucket<ABuildIdList>(encodeABuildIdListKey(serverUrl))
-            rBucket.set(buildIds)
-            rBucket.expire(expireABuildIdListS, TimeUnit.SECONDS)
+            rBucket.setAsync(buildIds).awaitCoro()
+            rBucket.expireAsync(expireABuildIdListS, TimeUnit.SECONDS).awaitCoro()
         } catch (ex: Exception) {
             log.error(ex.message)
         }
     }
 
-    fun getABuildsKeySet(serverUrl: ServerUrl): Set<ABuildId>? {
+    suspend fun getABuildsKeySet(serverUrl: ServerUrl): Set<ABuildId>? {
         return try {
-            client.getMap<ABuildId, ABuild>(encodeABuildsKey(serverUrl)).readAllKeySet()
+            client.getMap<ABuildId, ABuild>(encodeABuildsKey(serverUrl)).readAllKeySetAsync().awaitCoro()
         } catch (ex: Exception) {
             log.error(ex.message)
             null
         }
     }
 
-    fun getABuilds(serverUrl: ServerUrl, buildIds: ABuildIdList): Map<ABuildId, ABuild> {
+    suspend fun getABuilds(serverUrl: ServerUrl, buildIds: ABuildIdList): Map<ABuildId, ABuild> {
         try {
             val rMap = client.getMap<ABuildId, ABuild>(encodeABuildsKey(serverUrl))
-            return rMap.getAll(buildIds.toSet())
+            return rMap.getAllAsync(buildIds.toSet()).awaitCoro()
         } catch (ex: Exception) {
             log.error(ex.message)
             return mapOf<ABuildId, ABuild>()
         }
     }
 
-    fun setAndDeleteABuilds(serverUrl: ServerUrl, buildsToSet: List<ABuild>, buildIdsToDel: Collection<ABuildId>) {
+    suspend fun setAndDeleteABuilds(serverUrl: ServerUrl, buildsToSet: List<ABuild>, buildIdsToDel: Collection<ABuildId>) {
         try {
             val rMap = client.getMap<ABuildId, ABuild>(encodeABuildsKey(serverUrl))
-            rMap.fastRemove(*buildIdsToDel.toTypedArray())
-            rMap.putAll(buildsToSet.associate { it.id to it })
-            rMap.expire(expireABuildsS, TimeUnit.SECONDS)
+
+            val futureRemove = rMap.fastRemoveAsync(*buildIdsToDel.toTypedArray())
+            val futurePut = rMap.putAllAsync(buildsToSet.associate { it.id to it })
+            futureRemove.awaitCoro()
+            futurePut.awaitCoro()
+
+            rMap.expireAsync(expireABuildsS, TimeUnit.SECONDS).awaitCoro()
         } catch (ex: Exception) {
             log.error(ex.message)
         }
